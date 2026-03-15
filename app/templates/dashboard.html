@@ -60,6 +60,28 @@
   .refresh-btn.spinning svg { animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   #last-updated { font-size: 11px; color: var(--muted); font-family: monospace; }
+  .api-docs-btn {
+    display: flex; align-items: center; gap: 5px; text-decoration: none;
+    border: 1px solid var(--border); color: var(--muted); padding: 6px 12px;
+    border-radius: 6px; font-size: 11px; font-weight: 600; transition: all 0.15s;
+  }
+  .api-docs-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+  .filter-chips { display: flex; gap: 5px; }
+  .chip {
+    font-size: 10px; font-family: monospace; padding: 3px 9px;
+    border-radius: 20px; border: 1px solid var(--border); color: var(--muted);
+    cursor: pointer; background: transparent; transition: all 0.15s;
+  }
+  .chip:hover { border-color: var(--blue); color: var(--blue); }
+  .chip.active { background: rgba(59,130,246,0.15); border-color: var(--blue); color: var(--blue); }
+  .export-btn {
+    font-size: 10px; font-family: monospace; color: var(--muted);
+    border: 1px solid var(--border); background: transparent; padding: 2px 8px;
+    border-radius: 4px; cursor: pointer; transition: all 0.15s;
+  }
+  .export-btn:hover { border-color: var(--green); color: var(--green); }
+  @keyframes count-up { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .kpi-value { animation: count-up 0.4s ease forwards; }
 
   /* ── KPI Strip ── */
   .kpi-strip {
@@ -294,6 +316,13 @@
   </div>
   <div class="header-right">
     <span id="last-updated">Loading…</span>
+    <a href="/docs" target="_blank" class="api-docs-btn">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+        <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+      </svg>
+      API Docs
+    </a>
     <button class="refresh-btn" id="refresh-btn" onclick="loadAll()">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <path d="M23 4v6h-6M1 20v-6h6"/>
@@ -354,7 +383,14 @@
         <div class="panel-title" id="panel-branch-name">Select a branch above</div>
         <div class="panel-subtitle" id="panel-branch-sub">// 90-day history + 14-day ML forecast</div>
       </div>
-      <div class="accuracy-badge" id="panel-accuracy">—</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="filter-chips">
+          <button class="chip" onclick="setHistoryWindow(30)" id="chip-30">30d</button>
+          <button class="chip" onclick="setHistoryWindow(60)" id="chip-60">60d</button>
+          <button class="chip active" onclick="setHistoryWindow(90)" id="chip-90">90d</button>
+        </div>
+        <div class="accuracy-badge" id="panel-accuracy">—</div>
+      </div>
     </div>
     <div class="charts-grid">
       <div class="chart-panel">
@@ -367,7 +403,10 @@
           <div id="pattern-chart"></div>
         </div>
         <div class="side-panel">
-          <div class="chart-label" style="margin-bottom:10px">// 7-day order schedule</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div class="chart-label" style="margin-bottom:0">// 7-day order schedule</div>
+            <button class="export-btn" onclick="exportCSV()">CSV ↓</button>
+          </div>
           <table class="order-table" id="order-table">
             <thead>
               <tr>
@@ -437,6 +476,7 @@
 
 <script>
   let selectedBranchId = null;
+  let historyWindow = 90;
 
   // ── Toast ───────────────────────────────────────────────────────────────────
   function showToast(msg, type = 'info') {
@@ -459,14 +499,27 @@
   }
 
   // ── Load summary KPIs ───────────────────────────────────────────────────────
+  function animateKPI(id, endVal, fmt) {
+    const el = document.getElementById(id);
+    const start = performance.now();
+    const dur = 700;
+    function tick(now) {
+      const p = Math.min((now - start) / dur, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = fmt(endVal * eased);
+      if (p < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
   async function loadSummary() {
     const d = await fetch('/api/summary').then(r => r.json());
-    document.getElementById('kpi-branches').textContent = d.total_branches;
-    document.getElementById('kpi-accuracy').textContent = d.avg_forecast_accuracy + '%';
-    document.getElementById('kpi-demand').textContent = fmt$(d.total_projected_demand_7d);
-    document.getElementById('kpi-low').textContent = d.branches_low_cash;
-    document.getElementById('kpi-overfunding').textContent = '$' + d.weekly_overfunding_cost.toFixed(2);
-    document.getElementById('kpi-savings').textContent = '$' + (d.savings_potential_monthly).toFixed(0) + '/mo';
+    animateKPI('kpi-branches', d.total_branches, v => Math.round(v));
+    animateKPI('kpi-accuracy', d.avg_forecast_accuracy, v => v.toFixed(1) + '%');
+    animateKPI('kpi-demand', d.total_projected_demand_7d, fmt$);
+    animateKPI('kpi-low', d.branches_low_cash, v => Math.round(v));
+    animateKPI('kpi-overfunding', d.weekly_overfunding_cost, v => '$' + v.toFixed(2));
+    animateKPI('kpi-savings', d.savings_potential_monthly, v => '$' + v.toFixed(0) + '/mo');
     document.getElementById('save-overfund').textContent = '$' + d.weekly_overfunding_cost.toFixed(2);
     document.getElementById('save-monthly').textContent = '$' + (d.savings_potential_monthly).toFixed(0);
   }
@@ -531,6 +584,7 @@
       `// ${d.branch.city}, ${d.branch.state} · ${d.branch.branch_type} · vault cap ${fmt$(d.branch.vault_capacity)}`;
     document.getElementById('panel-accuracy').textContent = d.forecast_accuracy.toFixed(1) + '% confidence';
 
+    window._lastForecastData = d;
     renderForecastChart(d);
     renderPatternChart(d);
     renderOrderTable(d);
@@ -538,18 +592,47 @@
     renderAnomalies(d);
   }
 
+  // ─ History window filter ───────────────────────────────────────────────
+  function setHistoryWindow(days) {
+    historyWindow = days;
+    ['30','60','90'].forEach(d => {
+      const el = document.getElementById('chip-' + d);
+      if (el) el.classList.toggle('active', parseInt(d) === days);
+    });
+    if (selectedBranchId) selectBranch(selectedBranchId);
+  }
+
+  // ─ CSV export ────────────────────────────────────────────────────
+  function exportCSV() {
+    const d = window._lastForecastData;
+    if (!d) { showToast('Select a branch first', 'error'); return; }
+    const header = 'Date,Forecast ($),Order Recommendation ($),Confidence,Lower Bound ($),Upper Bound ($)\n';
+    const rows = d.forecasts_14d.map(f =>
+      [f.forecast_date, f.predicted_dispensed.toFixed(0), f.recommended_order.toFixed(0),
+       (f.confidence_score * 100).toFixed(1) + '%', f.lower_bound.toFixed(0), f.upper_bound.toFixed(0)].join(',')
+    ).join('\n');
+    const blob = new Blob([header + rows], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'), { href: url, download: 'cashcast-' + d.branch.code + '-forecast.csv' });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Forecast exported to CSV', 'success');
+  }
+
   // ── Forecast chart ──────────────────────────────────────────────────────────
   function renderForecastChart(d) {
-    const histX = d.history_90d.map(r => r.record_date);
-    const histY = d.history_90d.map(r => r.cash_dispensed);
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - historyWindow);
+    const filtH = d.history_90d.filter(r => new Date(r.record_date) >= cutoff);
+    const histX = filtH.map(r => r.record_date);
+    const histY = filtH.map(r => r.cash_dispensed);
     const fcX   = d.forecasts_14d.map(r => r.forecast_date);
     const fcY   = d.forecasts_14d.map(r => r.predicted_dispensed);
     const lo    = d.forecasts_14d.map(r => r.lower_bound);
     const hi    = d.forecasts_14d.map(r => r.upper_bound);
 
     const anomSet = new Set(d.anomaly_dates);
-    const axX = d.history_90d.filter(r => anomSet.has(r.record_date)).map(r => r.record_date);
-    const axY = d.history_90d.filter(r => anomSet.has(r.record_date)).map(r => r.cash_dispensed);
+    const axX = filtH.filter(r => anomSet.has(r.record_date)).map(r => r.record_date);
+    const axY = filtH.filter(r => anomSet.has(r.record_date)).map(r => r.cash_dispensed);
 
     const today = new Date().toISOString().split('T')[0];
 

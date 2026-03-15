@@ -22,8 +22,15 @@ from .schemas import (
 router = APIRouter()
 
 
-@router.get("/api/summary", response_model=DashboardSummary)
+@router.get(
+    "/api/summary",
+    response_model=DashboardSummary,
+    tags=["forecasts"],
+    summary="Portfolio KPIs",
+    response_description="Aggregated KPIs across all branches: accuracy, 7-day demand, low-cash count, savings estimate.",
+)
 def get_summary(db: Session = Depends(get_db)) -> DashboardSummary:
+    """Returns portfolio-level KPIs used to populate the dashboard header strip."""
     branches = db.query(Branch).all()
     today = date.today()
     week_end = today + timedelta(days=7)
@@ -72,13 +79,28 @@ def get_summary(db: Session = Depends(get_db)) -> DashboardSummary:
     )
 
 
-@router.get("/api/branches", response_model=list[BranchOut])
+@router.get(
+    "/api/branches",
+    response_model=list[BranchOut],
+    tags=["branches"],
+    summary="List all branches",
+    response_description="Array of branch records with code, city, type, and vault capacity.",
+)
 def list_branches(db: Session = Depends(get_db)) -> list[Branch]:
+    """Returns all registered branches ordered by primary key."""
     return db.query(Branch).all()
 
 
-@router.get("/api/branches/{branch_id}/forecast", response_model=BranchDetailResponse)
+@router.get(
+    "/api/branches/{branch_id}/forecast",
+    response_model=BranchDetailResponse,
+    tags=["forecasts"],
+    summary="Branch detail: 90-day history + 14-day forecast",
+    response_description="Full branch detail including historical records, ML forecasts with confidence bands, anomaly dates, and weekly demand pattern.",
+)
 def branch_forecast(branch_id: int, db: Session = Depends(get_db)) -> BranchDetailResponse:
+    """Returns 90-day cash dispensing history plus 14-day Ridge regression forecast
+    with Isolation Forest anomaly flags and day-of-week demand pattern."""
     branch = db.query(Branch).filter(Branch.id == branch_id).first()
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
@@ -128,8 +150,15 @@ def branch_forecast(branch_id: int, db: Session = Depends(get_db)) -> BranchDeta
     )
 
 
-@router.get("/api/forecast/all")
+@router.get(
+    "/api/forecast/all",
+    tags=["forecasts"],
+    summary="All-branch health snapshot",
+    response_description="Per-branch status (OK / LOW / CRITICAL / ANOMALY), vault percentage, forecast accuracy, and days until low cash.",
+)
 def all_branch_health(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    """Returns a health snapshot for every branch: vault level, forecast accuracy,
+    days until vault drops below 20%, and recent anomaly count."""
     branches = db.query(Branch).all()
     today = date.today()
     result: list[dict[str, Any]] = []
@@ -221,3 +250,22 @@ def all_branch_health(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
         )
 
     return result
+
+
+@router.get(
+    "/api/health",
+    tags=["health"],
+    summary="Service health check",
+    response_description="Service status, branch count, and timestamp.",
+)
+def health_check(db: Session = Depends(get_db)) -> dict:
+    """Returns service readiness: confirms the database is reachable and seeded."""
+    from datetime import datetime
+    branch_count = db.query(Branch).count()
+    return {
+        "status": "ok",
+        "service": "CashCast",
+        "version": "1.0.0",
+        "branches": branch_count,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }

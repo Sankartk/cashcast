@@ -140,9 +140,46 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="CashCast",
-    description="Intelligent branch cash demand forecasting",
+    description="""
+## CashCast — Branch Cash Demand Forecasting
+
+Retail bank branches typically pad vault orders by **15–20%** as a safety buffer.
+CashCast replaces that buffer with a **per-branch Ridge regression** forecast trained
+on 730 days of cash dispensing history, cutting idle vault float without creating gaps.
+
+### How it works
+- **17-feature model**: cyclic day/month encodings, payday flags, lag & rolling stats
+- **Isolation Forest** anomaly detection on historical residuals  
+- **Safety-buffered order rec** rounded to nearest $1,000  
+- **AI narrative** per branch: peak day, seasonal trend, idle cash risk
+
+### Explore
+| Endpoint | Description |
+|----------|-------------|
+| `GET /` | Operations dashboard (Plotly.js) |
+| `GET /docs` | Swagger UI ← you are here |
+| `GET /redoc` | ReDoc documentation |
+| `GET /api/summary` | Portfolio KPIs |
+| `GET /api/branches` | Branch registry |
+| `GET /api/forecast/all` | All-branch health snapshot |
+""",
     version="1.0.0",
     lifespan=lifespan,
+    openapi_tags=[
+        {
+            "name": "branches",
+            "description": "Branch registry — list and query branch metadata.",
+        },
+        {
+            "name": "forecasts",
+            "description": "ML forecasts, demand outlooks, 14-day order recommendations, "
+            "and portfolio-level KPIs.",
+        },
+        {
+            "name": "health",
+            "description": "Service health and readiness checks.",
+        },
+    ],
 )
 
 app.include_router(router)
