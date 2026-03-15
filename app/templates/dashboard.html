@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CashCast — Branch Cash Intelligence</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0f1a;
+    --surface: #0f1929;
+    --surface2: #162035;
+    --border: #1e2d45;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --blue: #3b82f6;
+    --blue-dim: rgba(59,130,246,0.12);
+    --green: #4ade80;
+    --amber: #fbbf24;
+    --red: #f87171;
+    --purple: #c084fc;
+    --cyan: #22d3ee;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
+
+  /* ── Header ── */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 28px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .logo { font-size: 15px; font-weight: 800; letter-spacing: -0.3px; }
+  .logo span { color: var(--blue); }
+  .breadcrumb { font-size: 11px; color: var(--muted); font-family: monospace; }
+  .header-right { display: flex; align-items: center; gap: 14px; }
+  .refresh-btn {
+    background: var(--blue);
+    color: white;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .refresh-btn:hover { background: #2563eb; }
+  .refresh-btn.spinning svg { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #last-updated { font-size: 11px; color: var(--muted); font-family: monospace; }
+
+  /* ── KPI Strip ── */
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .kpi-card {
+    background: var(--surface);
+    padding: 14px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .kpi-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; font-family: monospace; }
+  .kpi-value { font-size: 22px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; }
+  .kpi-sub { font-size: 10px; color: var(--muted); }
+
+  /* ── Main layout ── */
+  .main { padding: 20px 28px; max-width: 1400px; margin: 0 auto; }
+
+  /* ── Branch Health Grid ── */
+  .section-title {
+    font-size: 10px;
+    font-family: monospace;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+  }
+  .branch-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .branch-card {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .branch-card:hover { border-color: var(--blue); transform: translateY(-1px); }
+  .branch-card.active { border-color: var(--blue); background: var(--surface2); box-shadow: 0 0 0 1px var(--blue); }
+  .branch-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent-color, var(--border));
+    transition: background 0.15s;
+  }
+  .branch-card.active::before { background: var(--blue); }
+  .bc-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .bc-code { font-size: 10px; font-family: monospace; color: var(--muted); font-weight: 700; }
+  .bc-status { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .bc-status.ok { background: var(--green); box-shadow: 0 0 5px var(--green); }
+  .bc-status.low { background: var(--amber); box-shadow: 0 0 5px var(--amber); }
+  .bc-status.critical { background: var(--red); box-shadow: 0 0 5px var(--red); animation: pulse-red 1.5s infinite; }
+  .bc-status.anomaly { background: var(--purple); box-shadow: 0 0 5px var(--purple); }
+  @keyframes pulse-red { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .bc-name { font-size: 11px; font-weight: 700; color: var(--text); line-height: 1.3; margin-bottom: 8px; }
+  .bc-metrics { display: flex; flex-direction: column; gap: 4px; }
+  .bc-metric { display: flex; justify-content: space-between; align-items: center; }
+  .bc-metric-label { font-size: 9px; color: var(--muted); }
+  .bc-metric-val { font-size: 10px; font-weight: 700; }
+  .vault-bar-wrap { margin-top: 6px; }
+  .vault-bar-bg { background: var(--border); border-radius: 2px; height: 3px; }
+  .vault-bar-fill { height: 3px; border-radius: 2px; transition: width 0.4s; }
+
+  /* ── Detail Panel ── */
+  .detail-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .panel-title { font-size: 12px; font-weight: 700; }
+  .panel-subtitle { font-size: 10px; color: var(--muted); font-family: monospace; }
+  .accuracy-badge {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--green);
+    background: rgba(74,222,128,0.10);
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid rgba(74,222,128,0.25);
+  }
+
+  /* ── Charts grid ── */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 0;
+  }
+  .chart-panel {
+    padding: 16px 20px;
+    border-right: 1px solid var(--border);
+  }
+  .chart-label { font-size: 10px; font-family: monospace; color: var(--muted); margin-bottom: 6px; }
+  #forecast-chart { width: 100%; height: 280px; }
+
+  /* ── Side panels ── */
+  .side-panels { display: flex; flex-direction: column; }
+  .side-panel { padding: 16px; border-bottom: 1px solid var(--border); }
+  .side-panel:last-child { border-bottom: none; }
+  #pattern-chart { width: 100%; height: 140px; }
+
+  /* ── Order table ── */
+  .order-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .order-table th { color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: 0.6px; padding: 4px 0; text-align: left; border-bottom: 1px solid var(--border); font-family: monospace; }
+  .order-table td { padding: 5px 0; border-bottom: 1px solid rgba(30,45,69,0.5); }
+  .order-table tr:last-child td { border-bottom: none; }
+  .conf-pill {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+  }
+  .conf-high { background: rgba(74,222,128,0.12); color: var(--green); }
+  .conf-med { background: rgba(251,191,36,0.12); color: var(--amber); }
+  .conf-low { background: rgba(248,113,113,0.12); color: var(--red); }
+
+  /* ── Bottom row ── */
+  .bottom-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .bottom-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .bottom-card-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .bottom-card-body { padding: 14px 16px; }
+
+  /* ── Narrative card ── */
+  .narrative-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .narrative-icon { font-size: 20px; flex-shrink: 0; margin-top: 2px; }
+  .narrative-label { font-size: 10px; color: var(--blue); font-family: monospace; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 5px; font-weight: 700; }
+  #narrative-text { font-size: 13px; color: #94a3b8; line-height: 1.7; }
+
+  /* ── Anomaly list ── */
+  .anomaly-list { max-height: 120px; overflow-y: auto; }
+  .anomaly-item {
+    font-size: 11px;
+    color: var(--muted);
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+    font-family: monospace;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .anomaly-item::before { content: '⚠'; color: var(--purple); font-size: 10px; }
+
+  /* ── Savings calculator ── */
+  .savings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .savings-item { }
+  .savings-item-label { font-size: 10px; color: var(--muted); font-family: monospace; margin-bottom: 3px; }
+  .savings-item-val { font-size: 18px; font-weight: 800; }
+
+  /* ── Toast ── */
+  #toast { position: fixed; bottom: 24px; right: 24px; z-index: 999; display: flex; flex-direction: column; gap: 8px; }
+  .toast-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--blue);
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    animation: slide-in 0.25s ease;
+  }
+  .toast-item.success { border-left-color: var(--green); }
+  .toast-item.error { border-left-color: var(--red); }
+  @keyframes slide-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  @media (max-width: 1024px) {
+    .kpi-strip { grid-template-columns: repeat(3, 1fr); }
+    .branch-grid { grid-template-columns: repeat(3, 1fr); }
+    .charts-grid { grid-template-columns: 1fr; }
+    .chart-panel { border-right: none; border-bottom: 1px solid var(--border); }
+    .bottom-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <div class="logo">Cash<span>Cast</span></div>
+    <span class="breadcrumb">// Branch Cash Intelligence · Operations</span>
+  </div>
+  <div class="header-right">
+    <span id="last-updated">Loading…</span>
+    <button class="refresh-btn" id="refresh-btn" onclick="loadAll()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M23 4v6h-6M1 20v-6h6"/>
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+      </svg>
+      Refresh
+    </button>
+  </div>
+</div>
+
+<!-- KPI Strip -->
+<div class="kpi-strip">
+  <div class="kpi-card">
+    <div class="kpi-label">Branches</div>
+    <div class="kpi-value" style="color:var(--blue)" id="kpi-branches">—</div>
+    <div class="kpi-sub">monitored</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Forecast Acc.</div>
+    <div class="kpi-value" style="color:var(--green)" id="kpi-accuracy">—</div>
+    <div class="kpi-sub">avg confidence</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">7-Day Demand</div>
+    <div class="kpi-value" style="color:var(--cyan)" id="kpi-demand">—</div>
+    <div class="kpi-sub">projected dispensed</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Low Cash</div>
+    <div class="kpi-value" style="color:var(--amber)" id="kpi-low">—</div>
+    <div class="kpi-sub">branches &lt;20% vault</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Overfunding / wk</div>
+    <div class="kpi-value" style="color:var(--red)" id="kpi-overfunding">—</div>
+    <div class="kpi-sub">idle cash cost @ 5.5%</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">AI Savings</div>
+    <div class="kpi-value" style="color:var(--green)" id="kpi-savings">—</div>
+    <div class="kpi-sub">monthly potential</div>
+  </div>
+</div>
+
+<!-- Main content -->
+<div class="main">
+
+  <!-- Branch health cards -->
+  <div class="section-title">// branch health — click to inspect</div>
+  <div class="branch-grid" id="branch-cards">
+    <!-- Populated by JS -->
+  </div>
+
+  <!-- Forecast detail panel -->
+  <div class="detail-panel" id="detail-panel">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title" id="panel-branch-name">Select a branch above</div>
+        <div class="panel-subtitle" id="panel-branch-sub">// 90-day history + 14-day ML forecast</div>
+      </div>
+      <div class="accuracy-badge" id="panel-accuracy">—</div>
+    </div>
+    <div class="charts-grid">
+      <div class="chart-panel">
+        <div class="chart-label">// cash dispensed — historical (grey) + forecast (blue) with confidence band</div>
+        <div id="forecast-chart"></div>
+      </div>
+      <div class="side-panels">
+        <div class="side-panel">
+          <div class="chart-label">// weekly demand pattern</div>
+          <div id="pattern-chart"></div>
+        </div>
+        <div class="side-panel">
+          <div class="chart-label" style="margin-bottom:10px">// 7-day order schedule</div>
+          <table class="order-table" id="order-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Forecast</th>
+                <th>Order</th>
+                <th>Conf.</th>
+              </tr>
+            </thead>
+            <tbody id="order-tbody">
+              <tr><td colspan="4" style="color:var(--muted);font-size:11px">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Narrative -->
+  <div class="narrative-box">
+    <div class="narrative-icon">◈</div>
+    <div style="flex:1">
+      <div class="narrative-label">AI Forecast Insight</div>
+      <div id="narrative-text">Select a branch to see the demand outlook.</div>
+    </div>
+  </div>
+
+  <!-- Bottom row: anomalies + savings -->
+  <div class="bottom-row">
+    <div class="bottom-card">
+      <div class="bottom-card-header">⚠ Anomalous Days Detected</div>
+      <div class="bottom-card-body">
+        <div class="anomaly-list" id="anomaly-list">
+          <div style="font-size:11px;color:var(--muted)">Select a branch to see anomaly flags.</div>
+        </div>
+      </div>
+    </div>
+    <div class="bottom-card">
+      <div class="bottom-card-header">💰 Cash Optimisation Summary</div>
+      <div class="bottom-card-body">
+        <div class="savings-grid">
+          <div class="savings-item">
+            <div class="savings-item-label">// overfunding / week</div>
+            <div class="savings-item-val" style="color:var(--red)" id="save-overfund">—</div>
+          </div>
+          <div class="savings-item">
+            <div class="savings-item-label">// savings / month (AI)</div>
+            <div class="savings-item-val" style="color:var(--green)" id="save-monthly">—</div>
+          </div>
+          <div class="savings-item">
+            <div class="savings-item-label">// interest rate used</div>
+            <div class="savings-item-val" style="color:var(--cyan)">5.5%</div>
+          </div>
+          <div class="savings-item">
+            <div class="savings-item-label">// reduction target</div>
+            <div class="savings-item-val" style="color:var(--amber)">15%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast container -->
+<div id="toast"></div>
+
+<script>
+  let selectedBranchId = null;
+
+  // ── Toast ───────────────────────────────────────────────────────────────────
+  function showToast(msg, type = 'info') {
+    const el = document.createElement('div');
+    el.className = `toast-item ${type}`;
+    el.textContent = msg;
+    document.getElementById('toast').appendChild(el);
+    setTimeout(() => el.remove(), 3500);
+  }
+
+  // ── Format helpers ──────────────────────────────────────────────────────────
+  function fmt$(val) {
+    if (val >= 1_000_000) return '$' + (val / 1_000_000).toFixed(2) + 'M';
+    if (val >= 1_000) return '$' + (val / 1_000).toFixed(0) + 'K';
+    return '$' + val.toFixed(0);
+  }
+
+  function statusColor(s) {
+    return { OK: '#4ade80', LOW: '#fbbf24', CRITICAL: '#f87171', ANOMALY: '#c084fc' }[s] || '#64748b';
+  }
+
+  // ── Load summary KPIs ───────────────────────────────────────────────────────
+  async function loadSummary() {
+    const d = await fetch('/api/summary').then(r => r.json());
+    document.getElementById('kpi-branches').textContent = d.total_branches;
+    document.getElementById('kpi-accuracy').textContent = d.avg_forecast_accuracy + '%';
+    document.getElementById('kpi-demand').textContent = fmt$(d.total_projected_demand_7d);
+    document.getElementById('kpi-low').textContent = d.branches_low_cash;
+    document.getElementById('kpi-overfunding').textContent = '$' + d.weekly_overfunding_cost.toFixed(2);
+    document.getElementById('kpi-savings').textContent = '$' + (d.savings_potential_monthly).toFixed(0) + '/mo';
+    document.getElementById('save-overfund').textContent = '$' + d.weekly_overfunding_cost.toFixed(2);
+    document.getElementById('save-monthly').textContent = '$' + (d.savings_potential_monthly).toFixed(0);
+  }
+
+  // ── Load branch health cards ────────────────────────────────────────────────
+  async function loadBranchHealth() {
+    const data = await fetch('/api/forecast/all').then(r => r.json());
+    const container = document.getElementById('branch-cards');
+    container.innerHTML = data.map(b => {
+      const s = b.status.toLowerCase();
+      const color = statusColor(b.status);
+      const vaultPct = Math.max(Math.min(b.vault_pct, 100), 0);
+      const vaultColor = vaultPct < 10 ? '#f87171' : vaultPct < 20 ? '#fbbf24' : '#4ade80';
+      return `
+        <div class="branch-card ${selectedBranchId === b.branch.id ? 'active' : ''}"
+             onclick="selectBranch(${b.branch.id})" id="bcard-${b.branch.id}"
+             style="--accent-color:${color}">
+          <div class="bc-top">
+            <div class="bc-code">${b.branch.code}</div>
+            <div class="bc-status ${s}" title="${b.status}"></div>
+          </div>
+          <div class="bc-name">${b.branch.name.split(' ').slice(0,3).join(' ')}</div>
+          <div class="bc-metrics">
+            <div class="bc-metric">
+              <span class="bc-metric-label">Vault</span>
+              <span class="bc-metric-val" style="color:${vaultColor}">${vaultPct.toFixed(0)}%</span>
+            </div>
+            <div class="bc-metric">
+              <span class="bc-metric-label">Acc.</span>
+              <span class="bc-metric-val" style="color:#4ade80">${b.forecast_accuracy.toFixed(0)}%</span>
+            </div>
+            <div class="bc-metric">
+              <span class="bc-metric-label">Low in</span>
+              <span class="bc-metric-val" style="color:#94a3b8">${b.days_until_low < 999 ? b.days_until_low + 'd' : '—'}</span>
+            </div>
+          </div>
+          <div class="vault-bar-wrap">
+            <div class="vault-bar-bg">
+              <div class="vault-bar-fill" style="width:${vaultPct}%;background:${vaultColor}"></div>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    // Auto-select first branch
+    if (!selectedBranchId && data.length > 0) {
+      selectBranch(data[0].branch.id);
+    }
+  }
+
+  // ── Select branch → load detail ─────────────────────────────────────────────
+  async function selectBranch(branchId) {
+    selectedBranchId = branchId;
+    document.querySelectorAll('.branch-card').forEach(c => c.classList.remove('active'));
+    const card = document.getElementById(`bcard-${branchId}`);
+    if (card) card.classList.add('active');
+
+    const d = await fetch(`/api/branches/${branchId}/forecast`).then(r => r.json());
+
+    document.getElementById('panel-branch-name').textContent = d.branch.name;
+    document.getElementById('panel-branch-sub').textContent =
+      `// ${d.branch.city}, ${d.branch.state} · ${d.branch.branch_type} · vault cap ${fmt$(d.branch.vault_capacity)}`;
+    document.getElementById('panel-accuracy').textContent = d.forecast_accuracy.toFixed(1) + '% confidence';
+
+    renderForecastChart(d);
+    renderPatternChart(d);
+    renderOrderTable(d);
+    renderNarrative(d);
+    renderAnomalies(d);
+  }
+
+  // ── Forecast chart ──────────────────────────────────────────────────────────
+  function renderForecastChart(d) {
+    const histX = d.history_90d.map(r => r.record_date);
+    const histY = d.history_90d.map(r => r.cash_dispensed);
+    const fcX   = d.forecasts_14d.map(r => r.forecast_date);
+    const fcY   = d.forecasts_14d.map(r => r.predicted_dispensed);
+    const lo    = d.forecasts_14d.map(r => r.lower_bound);
+    const hi    = d.forecasts_14d.map(r => r.upper_bound);
+
+    const anomSet = new Set(d.anomaly_dates);
+    const axX = d.history_90d.filter(r => anomSet.has(r.record_date)).map(r => r.record_date);
+    const axY = d.history_90d.filter(r => anomSet.has(r.record_date)).map(r => r.cash_dispensed);
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const traces = [
+      {
+        x: [...fcX, ...fcX.slice().reverse()],
+        y: [...hi, ...lo.slice().reverse()],
+        fill: 'toself', fillcolor: 'rgba(59,130,246,0.10)',
+        line: { color: 'transparent' }, name: 'Confidence', hoverinfo: 'skip',
+      },
+      {
+        x: histX, y: histY, mode: 'lines', name: 'Historical',
+        line: { color: '#334155', width: 1.5 },
+        hovertemplate: '%{x}<br><b>$%{y:,.0f}</b><extra>Historical</extra>',
+      },
+      {
+        x: fcX, y: fcY, mode: 'lines+markers', name: 'Forecast',
+        line: { color: '#3b82f6', width: 2, dash: 'dot' },
+        marker: { size: 5, color: '#3b82f6' },
+        hovertemplate: '%{x}<br><b>$%{y:,.0f}</b><extra>Forecast</extra>',
+      },
+      {
+        x: axX, y: axY, mode: 'markers', name: 'Anomaly',
+        marker: { symbol: 'x-open', size: 10, color: '#c084fc', line: { width: 2 } },
+        hovertemplate: '%{x}<br><b>⚠ Anomaly: $%{y:,.0f}</b><extra></extra>',
+      },
+    ];
+
+    const layout = {
+      paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+      font: { color: '#64748b', size: 10, family: 'monospace' },
+      margin: { l: 58, r: 16, t: 8, b: 36 },
+      yaxis: {
+        gridcolor: '#0f1929', tickformat: '$,.0f', tickfont: { size: 10 },
+        zeroline: false,
+      },
+      xaxis: { gridcolor: '#0f1929', showgrid: false, tickfont: { size: 10 } },
+      legend: { bgcolor: 'transparent', x: 0.01, y: 0.99, font: { size: 10 } },
+      shapes: [{
+        type: 'line',
+        x0: today, x1: today, y0: 0, y1: 1, yref: 'paper',
+        line: { color: '#475569', width: 1.5, dash: 'dash' },
+      }],
+      annotations: [{
+        x: today, y: 1, yref: 'paper', text: 'Today', showarrow: false,
+        font: { size: 9, color: '#475569' }, xanchor: 'left', yanchor: 'top',
+        xshift: 4,
+      }],
+      hoverlabel: {
+        bgcolor: '#0f1929', bordercolor: '#1e2d45',
+        font: { color: '#e2e8f0', size: 11 },
+      },
+    };
+
+    Plotly.react('forecast-chart', traces, layout, { responsive: true, displayModeBar: false });
+  }
+
+  // ── Weekly pattern chart ────────────────────────────────────────────────────
+  function renderPatternChart(d) {
+    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const vals = days.map(day => d.weekly_pattern[day] || 0);
+    const colors = days.map((_, i) =>
+      i === 4 ? '#3b82f6' : i >= 5 ? '#1e3a5f' : '#1e2d45'
+    );
+
+    const traces = [{
+      x: days, y: vals, type: 'bar',
+      marker: { color: colors, line: { color: 'transparent' } },
+      hovertemplate: '<b>%{x}</b><br>$%{y:,.0f}<extra></extra>',
+    }];
+
+    const layout = {
+      paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+      font: { color: '#64748b', size: 9, family: 'monospace' },
+      margin: { l: 52, r: 8, t: 8, b: 28 },
+      yaxis: { gridcolor: '#0f1929', tickformat: '$,.0f', zeroline: false },
+      xaxis: { showgrid: false },
+      bargap: 0.3,
+      hoverlabel: { bgcolor: '#0f1929', bordercolor: '#1e2d45', font: { color: '#e2e8f0', size: 10 } },
+    };
+
+    Plotly.react('pattern-chart', traces, layout, { responsive: true, displayModeBar: false });
+  }
+
+  // ── Order schedule table ────────────────────────────────────────────────────
+  function renderOrderTable(d) {
+    const tbody = document.getElementById('order-tbody');
+    const rows = d.forecasts_14d.slice(0, 7);
+    tbody.innerHTML = rows.map(f => {
+      const conf = f.confidence_score;
+      const confClass = conf >= 0.80 ? 'conf-high' : conf >= 0.65 ? 'conf-med' : 'conf-low';
+      const dt = new Date(f.forecast_date + 'T00:00:00');
+      const label = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      return `
+        <tr>
+          <td style="color:#94a3b8">${label}</td>
+          <td style="color:#e2e8f0;font-weight:600">${fmt$(f.predicted_dispensed)}</td>
+          <td style="color:#3b82f6;font-weight:700">${fmt$(f.recommended_order)}</td>
+          <td><span class="conf-pill ${confClass}">${(conf * 100).toFixed(0)}%</span></td>
+        </tr>`;
+    }).join('');
+  }
+
+  // ── Narrative ───────────────────────────────────────────────────────────────
+  function renderNarrative(d) {
+    const n = d.forecasts_14d.find(f => f.narrative)?.narrative;
+    document.getElementById('narrative-text').textContent =
+      n || 'Demand pattern is stable. No unusual signals detected for this branch.';
+  }
+
+  // ── Anomalies ───────────────────────────────────────────────────────────────
+  function renderAnomalies(d) {
+    const list = document.getElementById('anomaly-list');
+    if (!d.anomaly_dates || d.anomaly_dates.length === 0) {
+      list.innerHTML = '<div style="font-size:11px;color:var(--muted)">No anomalous days in the last 90 days. ✓</div>';
+      return;
+    }
+    list.innerHTML = d.anomaly_dates.slice(-10).reverse().map(dt =>
+      `<div class="anomaly-item">${dt}</div>`
+    ).join('');
+  }
+
+  // ── Load all ────────────────────────────────────────────────────────────────
+  async function loadAll() {
+    const btn = document.getElementById('refresh-btn');
+    btn.classList.add('spinning');
+    try {
+      await Promise.all([loadSummary(), loadBranchHealth()]);
+      const now = new Date();
+      document.getElementById('last-updated').textContent =
+        '⏱ ' + now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        + ', ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      showToast('Failed to refresh data', 'error');
+    } finally {
+      btn.classList.remove('spinning');
+    }
+  }
+
+  // ── Init ────────────────────────────────────────────────────────────────────
+  loadAll();
+  setInterval(loadAll, 120_000); // auto-refresh every 2 minutes
+</script>
+</body>
+</html>
